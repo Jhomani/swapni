@@ -1,23 +1,28 @@
 <template>
 	<div class="chat-container">
-		<div class="flex column justify-between" style="height: calc(100vh - 52px)">
-			<div class="q-mx-auto q-my-sm" style="width: 100%; max-width: 360px">
-				<q-chat-message
-					v-for="(item, index) in receivedMessages" :key="index"
-					:name="item.user.name"
-					:text="[`${item.message}`]"
-					stamp="7 minutes ago"
-					bg-color="purple-2"
-				/>
-				<q-chat-message
-					v-for="(item, index) in messages" :key="index"
-					:text="[`${item.message}`]"
-					name = 'me'
-					sent
-					:stamp="item.stamp"
-				/>
+		<div class="flex column justify-between no-wrap" style="height: calc(100vh - 52px)">
+			<div 
+				class="q-mx-auto q-my-sm" 
+				style="width: 100%; max-width: 360px"
+			>
+				<div v-for="(item, index) in allMessage" :key="index">
+					<q-chat-message
+						v-if="item.user.name !== currentUser"
+						:name="item.user.name"
+						:text="[`${item.message}`]"
+						stamp="7 minutes ago"
+						bg-color="purple-2"
+					/>
+					<q-chat-message
+						v-else
+						:text="[`${item.message}`]"
+						:name ="currentUser" 
+						sent
+						:stamp="item.stamp"
+					/>
+				</div>
 			</div>
-			<div class="row justify-center">
+			<div class="row justify-center q-mx-auto" style="width: 100%; max-width: 360px">
 				<q-input 
 					class="col-10"
 					outlined 
@@ -42,30 +47,39 @@
 
 <script>
 const url = "http://192.168.0.18:8000/api"
+import Echo from 'laravel-echo';
+window.Pusher = require('pusher-js');
+window.Echo = new Echo({
+	broadcaster: 'pusher',
+	key: 'anykey',
+	wsHost: '192.168.0.18',
+	wsPort: 6001,
+	forceTLS: false,
+	disableStats: true
+})
+
+
 export default {
 	data() {
 		return {
 			newMessage: '',
 			activeUsers: [],
-			messages: [
-			],
-			receivedMessages: [
-			]
+			sendMessages: [],
+			receivedMessages: [],
+			allMessage: [],
+			currentUser: ''
 		}
 	},
 	mounted() {
-		this.$echo.join('chat')
-			.here( user => {
-				this.activeUsers = user;
-			})
-			.joining(user => {
-				// ...
-			})
-			.leaving(user => {
-				// ...
-			})
+	},
+	created() {
+		this.currentUser = this.$q.localStorage.getItem('auth').name;	
+		this.fetchMessage();
+
+
+		window.Echo.channel('chat')
 			.listen('NewMessage', event => {
-				this.messages.push(this.event.message);
+				this.allMessage.push(event.message);
 			})
 	},
 	methods: {
@@ -73,9 +87,7 @@ export default {
 			const formData = new FormData()
 			formData.append('message', this.newMessage)
 
-			console.log(this.$q.localStorage.getItem('auth').access_token)
-
-			this.$axios.post(`${url}/send-message`, formData , {
+			this.$axios.post(`${url}/send-message?user=${this.currentUser}`, formData , {
 				headers: {
 					Authorization: 'Bearer' + this.$q.localStorage.getItem('auth').access_token,
 					Accept: 'application/json',
@@ -84,7 +96,6 @@ export default {
 			})	
 				.then( res => {
 					console.log('ok')
-					this.messages.push({ message: this.newMessage, stamp: '1 minutes ago' })
 					this.newMessage= ''
 				})
 				.catch( err => {
@@ -92,19 +103,17 @@ export default {
 				})
 		},
 		fetchMessage() {
-			this.$axios.get(`${url}/fetch-messages`, {
+			this.$axios.get(`${url}/fetch-messages?other=${this.$route.params.id}`, {
 				headers: {
 					Autorization: 'Bearer' + this.$q.localStorage.getItem('auth').access_token
 				}
 			})	
 				.then( res => {
-					this.receivedmessages = res.data
+					this.allMessage  = res.data.message
 				})
 				.catch( err => {
 					console.log(err)
 				})
-			this.messages.push({ message: this.newMessage, stamp: '1 minutes ago' })
-			this.newMessage= ''
 		}
 	}
 }
